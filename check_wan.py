@@ -1,10 +1,9 @@
-#!/usr/bin/env python
-#
-# Script to check for the Internet Address and log/report it
-# Should run through a LaunchAgent/Daemon
-# written by Chris G. Sellers (cgseller@gmail.com)
-#
-#
+#!/usr/bin/virtual-env python
+'''
+ Script to check for the Internet Address and log/report it
+ Should run through a LaunchAgent/Daemon
+ written by Chris G. Sellers (cgseller@gmail.com)
+'''
 
 import os
 import urllib2
@@ -12,17 +11,19 @@ import smtplib
 import argparse
 import json
 import sys
+import syslog
 from syslog import syslog as slog
 
 
 __author__ = 'Chris G. Sellers'
 __verson__ = '0.0.1'
 
-class checkWAN(object):
+class CheckWAN(object):
     '''
     check WAN address and return attributes
     '''
-    def __init__(self):
+
+    def __init__(self, sender=None, receiver=None, debug=False):
         '''
         uses json - a candidate for templating no doubt
         '''
@@ -31,8 +32,36 @@ class checkWAN(object):
         self.existing = None
         self.datafile = '/var/tmp/checkWAN.ip'
         self.authpass = None
-        self.sender = args.sender or None
-        self.receiver = args.receiver or None
+        self.receiver = receiver
+        self.sender = sender
+        self.debug = debug
+
+    def __repr__(self):
+        '''
+        define representation here
+        '''
+        print('''
+              vetting system: {}
+              existing ip : {}
+              sender: {}
+              receiver: {}
+              datafile: {}
+              '''.format(self.vetter, self.existing, self.sender,
+                         self.receiver, self.datafile))
+
+    def reset(self):
+        '''
+        reset any state
+        '''
+        try:
+            os.unlink(self.datafile)
+        except OSError as oserr:
+            _msg = ('unable to remove data file: {} : {}'.format(self.datafile,
+                                                                 oserr))
+            slog(syslog.LOG_WARNING, _msg)
+            print _msg
+        else:
+            slog(syslog.LOG_ERR, 'unable to reset')
 
     def fetchaddress(self):
         '''
@@ -41,12 +70,13 @@ class checkWAN(object):
         try:
             theurl = urllib2.urlopen(self.vetter, timeout=30)
             resp = json.loads(theurl.read())
-            self.newip = resp['ip'] or None
-        except Exception as E:
+            self.newip = str(resp['ip']) or None
+            print self.newip
+        except urllib2.URLError as uee:
             _msg = 'Unable to connecto {}:{}'.format(
-                self.vetter, E)
-            print(_msg)
-            slog(_msg)
+                self.vetter, uee)
+            print _msg
+            slog(syslog.LOG_ERR, _msg)
 
     def currentIP(self):
         '''
@@ -55,40 +85,41 @@ class checkWAN(object):
         if different, notify
         '''
         try:
-            with open('/var/tmp/checkWAN.ip', 'rb') as f:
-                self.existing = f.readlines(20)
-        except IOError as IOE:
+            with open('/var/tmp/checkWAN.ip', 'rb') as dataf:
+                self.existing = dataf.readlines(20)[0]
+        except IOError as ioe:
             if os.path.isfile(self.datafile):
                 _msg = ('ERROR - existing IP file exists but can not open it'
                         ' - check permissions/format : {} : {}'.format(
-                            self.datafile, IOE))
+                            self.datafile, ioe))
             else:
                 self.existing = None
                 _msg = ('Existing IP empty/malformed - assumed None')
-            print(_msg)
-            slog(_msg)
+            print _msg
+            slog(syslog.LOG_ERR, _msg)
 
     def compareIPs(self):
         '''
         compare the IPs to see if the new is different from the existing
         '''
         notify = False
-        if self.newip is not self.existing:
+        if str(self.newip) != str(self.existing):
             notify = True
             _msg = ('IP address changed '
-                    'OLD: {} : '
-                    'NOW: {}'.format(self.existing, self.newip))
+                    'OLD: {}. '
+                    'NOW: {}.'.format(self.existing, self.newip))
+            print _msg
             try:
-                with open(self.datafile, 'wb') as f:
-                    f.write(self.newip)
-            except IOerror as e:
-                _msg = ('unable to write {} : {}'.format(self.datafile, e))
+                with open(self.datafile, 'wb') as dataf:
+                    dataf.write(self.newip)
+            except IOError as ioe:
+                _msg = ('unable to write {} : {}'.format(self.datafile, ioe))
                 print _msg
-                slog(_msg)
+                slog(syslog.LOG_ERR, _msg)
         else:
             _msg = ('No IP Change Detected')
 
-        slog(_msg)
+        slog(syslog.LOG_ERR, _msg)
         return(notify, _msg)
 
     def sendmessage(self, message):
@@ -116,11 +147,11 @@ class checkWAN(object):
                              self.receiver,
                              smtp_message)
             smtpobj.close()
-        except Exception as SMTPE:
+        except smtplib.SMTPConnectError as smtp_err:
             _msg = ('error sending SMTP message : {}'
-                    '- contents : {}'.format(SMTPE, smtp_message))
+                    '- contents : {}'.format(smtp_err, smtp_message))
             print _msg
-            slog(_msg)
+            slog(syslog.LOG_ERR, _msg)
 
 def main():
     '''
@@ -140,11 +171,16 @@ def main():
                             help='sending e-mail address')
         parser.add_argument('-r', '--receiver',
                             help='receiving e-mail address')
+        parser.add_argument('-R', '--reset',
+                            help='reset eveything')
+        parser.add_argument('-n', '--debug', action='store_true',
+                            help='do not send email')
         args = parser.parse_args()
-    except Exception as e:
-        print e
-
-    ipcheck = checkWAN()
+    except argparse.ArgumentError as arge:
+        print arge
+    ipcheck = CheckWAN(args.receiver,
+                       args.sender,
+                       args.debug)
     if args.datafile:
         ipcheck.datafile = args.datafile
 
@@ -160,7 +196,7 @@ def main():
     ipcheck.fetchaddress()
     ipcheck.currentIP()
     (notify, message) = ipcheck.compareIPs()
-    if notify:
+    if notify and not __debug__:
         ipcheck.sendmessage(message)
 
 
