@@ -12,6 +12,7 @@ import argparse
 import json
 import sys
 import syslog
+import logging
 from syslog import syslog as slog
 
 
@@ -23,9 +24,11 @@ class CheckWAN(object):
     check WAN address and return attributes
     '''
 
-    def __init__(self, sender=None, receiver=None, debug=False):
+    def __init__(self, sender=None, receiver=None, level=0):
         '''
-        uses json - a candidate for templating no doubt
+        create an object to obtain and compare the IP address
+        initially written for ipify.org, but maybe needs to be changed
+        to handle multiple APIs (ReST) and learn the return format
         '''
         self.vetter = 'http://api.ipify.org?format=json'
         self.newip = None
@@ -34,7 +37,7 @@ class CheckWAN(object):
         self.authpass = None
         self.receiver = receiver
         self.sender = sender
-        self.debug = debug
+        self.loglevel = level
 
     def __repr__(self):
         '''
@@ -78,7 +81,7 @@ class CheckWAN(object):
             print _msg
             slog(syslog.LOG_ERR, _msg)
 
-    def currentIP(self):
+    def current_ip(self):
         '''
         what is the current expected ip
         so we can compare it to the discovered
@@ -98,7 +101,7 @@ class CheckWAN(object):
             print _msg
             slog(syslog.LOG_ERR, _msg)
 
-    def compareIPs(self):
+    def compare_ips(self):
         '''
         compare the IPs to see if the new is different from the existing
         '''
@@ -153,6 +156,19 @@ class CheckWAN(object):
             print _msg
             slog(syslog.LOG_ERR, _msg)
 
+def logdebug(info, level=0):
+    '''
+    logger method to handle debug prints or logging
+    3 = print everything
+    2 = debug as debug messages
+    1 = warning
+    '''
+    if level > 2:
+        print info
+        logging.debug(info)
+    else:
+        logging.error(info)
+
 def main():
     '''
     make a call out to an external name service to ip provider and return
@@ -173,14 +189,17 @@ def main():
                             help='receiving e-mail address')
         parser.add_argument('-R', '--reset',
                             help='reset eveything')
-        parser.add_argument('-n', '--debug', action='store_true',
+        parser.add_argument('-n', '--noop', action='store_true',
                             help='do not send email')
+        parser.add_argument('-v', '--verbose', help='''Verbosity: v - errors;
+                                                        vv - debugging;
+                                                        vvv - everything''')
         args = parser.parse_args()
     except argparse.ArgumentError as arge:
-        print arge
+        logdebug("argparse error : {}".format(arge), len(args.verbose))
     ipcheck = CheckWAN(args.receiver,
                        args.sender,
-                       args.debug)
+                       len(args.verbose))
     if args.datafile:
         ipcheck.datafile = args.datafile
 
@@ -194,8 +213,8 @@ def main():
         raise RuntimeWarning("Version not 2.7+")
 
     ipcheck.fetchaddress()
-    ipcheck.currentIP()
-    (notify, message) = ipcheck.compareIPs()
+    ipcheck.current_ip()
+    (notify, message) = ipcheck.compare_ips()
     if notify and not __debug__:
         ipcheck.sendmessage(message)
 
