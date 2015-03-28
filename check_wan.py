@@ -1,4 +1,4 @@
-#!/usr/bin/virtual-env python
+#!/usr/bin/env python
 '''
  Script to check for the Internet Address and log/report it
  Should run through a LaunchAgent/Daemon
@@ -195,11 +195,15 @@ def main():
                                                         vv - debugging;
                                                         vvv - everything''')
         args = parser.parse_args()
+        if len(sys.argv) < 2:
+            parser.print_usage()
+            sys.exit(1)
     except argparse.ArgumentError as arge:
         logdebug("argparse error : {}".format(arge), len(args.verbose))
+    verbosity = len(args.verbose) or 0
     ipcheck = CheckWAN(args.receiver,
                        args.sender,
-                       len(args.verbose))
+                       verbosity)
     if args.datafile:
         ipcheck.datafile = args.datafile
 
