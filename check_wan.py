@@ -5,6 +5,7 @@
  written by Chris G. Sellers (cgseller@gmail.com)
 '''
 
+import ConfigParser
 import os
 import urllib2
 import smtplib
@@ -14,6 +15,7 @@ import sys
 import syslog
 import logging
 from syslog import syslog as slog
+from base64 import b64decode
 
 
 __author__ = 'Chris G. Sellers'
@@ -51,6 +53,31 @@ class CheckWAN(object):
               datafile: {}
               '''.format(self.vetter, self.existing, self.sender,
                          self.receiver, self.datafile))
+
+    def config(self):
+        '''
+        config file for passwords and access information
+        default to ./check-wan.cfg
+        format:
+        [ipservice]
+        url = http://api.ipify.org?format=json
+        [mail]
+        from = cgseller@mac.com
+        to = cgseller@mac.com
+        password = xxxxxyyyyyzzzz=
+        '''
+
+        getconfig = ConfigParser.ConfigParser()
+        try:
+            config = getconfig.readfp(open('./check_wan.cfg', 'rb'))
+        except IOError as error:
+            _msg = ('unable to open config : {}'.format(error))
+            slog(syslog.LOG_WARNING, _msg)
+            print _msg
+        self.sender = config.get('mail', 'from') or None
+        self.receiver = config.get('mail', 'to') or None
+        self.authpass = b64decode(config.get('mail', 'password')) or None
+
 
     def reset(self):
         '''
@@ -191,19 +218,28 @@ def main():
                             help='reset eveything')
         parser.add_argument('-n', '--noop', action='store_true',
                             help='do not send email')
-        parser.add_argument('-v', '--verbose', help='''Verbosity: v - errors;
-                                                        vv - debugging;
-                                                        vvv - everything''')
+        parser.add_argument('-v', '--verbose',
+                            help='''Verbosity: 1 - errors;
+                                    2 - debugging;
+                                    3 - everything
+                                 ''',
+                            nargs='*',
+                            action='append')
+        parser.add_argument('-c', '--config',
+                            help='config file, default = ./check_wan.cfg',
+                            default='./check_wan.cfg')
         args = parser.parse_args()
         if len(sys.argv) < 2:
             parser.print_usage()
             sys.exit(1)
     except argparse.ArgumentError as arge:
-        logdebug("argparse error : {}".format(arge), len(args.verbose))
+        logdebug("argparse error : {}".format(arge), len(args.verbose) or None)
     verbosity = len(args.verbose) or 0
+
     ipcheck = CheckWAN(args.receiver,
                        args.sender,
                        verbosity)
+    ipcheck.config()  # default config information override below
     if args.datafile:
         ipcheck.datafile = args.datafile
 
