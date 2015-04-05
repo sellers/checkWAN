@@ -69,14 +69,14 @@ class CheckWAN(object):
 
         getconfig = ConfigParser.ConfigParser()
         try:
-            config = getconfig.readfp(open('./check_wan.cfg', 'rb'))
+            getconfig.readfp(open('./check_wan.cfg', 'rb'))
         except IOError as error:
             _msg = ('unable to open config : {}'.format(error))
             slog(syslog.LOG_WARNING, _msg)
             print _msg
-        self.sender = config.get('mail', 'from') or None
-        self.receiver = config.get('mail', 'to') or None
-        self.authpass = b64decode(config.get('mail', 'password')) or None
+        self.sender = getconfig.get('mail', 'from') or None
+        self.receiver = getconfig.get('mail', 'to') or None
+        self.authpass = b64decode(getconfig.get('mail', 'password')) or None
 
 
     def reset(self):
