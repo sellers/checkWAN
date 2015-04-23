@@ -1,25 +1,37 @@
 #!/usr/bin/env python
 '''
  Script to check for the Internet Address and log/report it
- Should run through a LaunchAgent/Daemon
+ Should run through a LaunchAgent/Daemon/Upstart/etc
  written by Chris G. Sellers (cgseller@gmail.com)
+ code written to by python3 and python2 friendly
 '''
 
-import ConfigParser
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
+try:
+    from urllib2 import (urlopen,
+                         URLError,
+                         Request)
+except ImportError:
+    from urllib.request import (urlopen,
+                                Request)
+    from urllib.error import URLError
 import os
-import urllib2
 import smtplib
 import argparse
 import json
 import sys
 import syslog
 import logging
+import io
 from syslog import syslog as slog
 from base64 import b64decode
 
 
 __author__ = 'Chris G. Sellers'
-__verson__ = '0.0.1'
+__verson__ = '0.0.2'
 
 class CheckWAN(object):
     '''
@@ -69,11 +81,12 @@ class CheckWAN(object):
 
         getconfig = ConfigParser.ConfigParser()
         try:
-            getconfig.readfp(open('./check_wan.cfg', 'rb'))
+            getconfig.readfp(io.open('./check_wan.cfg', 'rt'))
         except IOError as error:
             _msg = ('unable to open config : {}'.format(error))
             slog(syslog.LOG_WARNING, _msg)
-            print _msg
+            if self.loglevel > 2:
+                print(_msg)
         self.sender = getconfig.get('mail', 'from') or None
         self.receiver = getconfig.get('mail', 'to') or None
         self.authpass = b64decode(getconfig.get('mail', 'password')) or None
@@ -89,23 +102,28 @@ class CheckWAN(object):
             _msg = ('unable to remove data file: {} : {}'.format(self.datafile,
                                                                  oserr))
             slog(syslog.LOG_WARNING, _msg)
-            print _msg
+            if self.loglevel > 1:
+                print(_msg)
         else:
             slog(syslog.LOG_ERR, 'unable to reset')
+            if self.loglevel > 0:
+                print('unable to reset... {}'.format(self.datafile))
 
     def fetchaddress(self):
         '''
         reach out and get the publc IP(4) address
         '''
         try:
-            theurl = urllib2.urlopen(self.vetter, timeout=30)
-            resp = json.loads(theurl.read())
-            self.newip = str(resp['ip']) or None
-            print self.newip
-        except urllib2.URLError as uee:
+            theurl = urlopen(Request(self.vetter), timeout=30)
+            resp = json.loads(str(theurl.read().decode('utf-8')))
+            self.newip = resp['ip'] or None
+            #self.newip = str(resp['ip']) or None
+            print(self.newip)
+        except URLError as uee:
             _msg = 'Unable to connecto {}:{}'.format(
                 self.vetter, uee)
-            print _msg
+            if self.loglevel > 1:
+                print(_msg)
             slog(syslog.LOG_ERR, _msg)
 
     def current_ip(self):
@@ -115,18 +133,23 @@ class CheckWAN(object):
         if different, notify
         '''
         try:
-            with open('/var/tmp/checkWAN.ip', 'rb') as dataf:
+            with io.open('/var/tmp/checkWAN.ip', 'rt') as dataf:
                 self.existing = dataf.readlines(20)[0]
+                _msg = ('existing IP found as {}'.format(self.existing))
         except IOError as ioe:
             if os.path.isfile(self.datafile):
                 _msg = ('ERROR - existing IP file exists but can not open it'
                         ' - check permissions/format : {} : {}'.format(
                             self.datafile, ioe))
             else:
+                _msg = ('No status file found, assume null')
                 self.existing = None
-                _msg = ('Existing IP empty/malformed - assumed None')
-            print _msg
-            slog(syslog.LOG_ERR, _msg)
+        except IndexError as ierr:
+            self.existing = None
+            _msg = ('Existing IP empty/malformed - assumed None')
+        if self.loglevel > 1:
+            print(_msg)
+        slog(syslog.LOG_ERR, _msg)
 
     def compare_ips(self):
         '''
@@ -138,16 +161,20 @@ class CheckWAN(object):
             _msg = ('IP address changed '
                     'OLD: {}. '
                     'NOW: {}.'.format(self.existing, self.newip))
-            print _msg
+            if self.loglevel > 1:
+                print(_msg)
             try:
-                with open(self.datafile, 'wb') as dataf:
+                with io.open(self.datafile, 'wt') as dataf:
                     dataf.write(self.newip)
             except IOError as ioe:
                 _msg = ('unable to write {} : {}'.format(self.datafile, ioe))
-                print _msg
+                if self.loglevel > 0:
+                    print(_msg)
                 slog(syslog.LOG_ERR, _msg)
         else:
             _msg = ('No IP Change Detected')
+            if self.loglevel > 2:
+                print(_msg)
 
         slog(syslog.LOG_ERR, _msg)
         return(notify, _msg)
@@ -180,7 +207,8 @@ class CheckWAN(object):
         except smtplib.SMTPConnectError as smtp_err:
             _msg = ('error sending SMTP message : {}'
                     '- contents : {}'.format(smtp_err, smtp_message))
-            print _msg
+            if self.loglevel > 2:
+                print(_msg)
             slog(syslog.LOG_ERR, _msg)
 
 def logdebug(info, level=0):
@@ -191,7 +219,7 @@ def logdebug(info, level=0):
     1 = warning
     '''
     if level > 2:
-        print info
+        print(info)
         logging.debug(info)
     else:
         logging.error(info)
@@ -219,12 +247,13 @@ def main():
         parser.add_argument('-n', '--noop', action='store_true',
                             help='do not send email')
         parser.add_argument('-v', '--verbose',
-                            help='''Verbosity: 1 - errors;
-                                    2 - debugging;
-                                    3 - everything
+                            help='''Verbosity: -v - errors;
+                                    -v -v - debugging;
+                                    -v -v - everything
                                  ''',
                             nargs='*',
-                            action='append')
+                            action='append',
+                            default=[])
         parser.add_argument('-c', '--config',
                             help='config file, default = ./check_wan.cfg',
                             default='./check_wan.cfg')
@@ -235,6 +264,8 @@ def main():
     except argparse.ArgumentError as arge:
         logdebug("argparse error : {}".format(arge), len(args.verbose) or None)
     verbosity = len(args.verbose) or 0
+    if verbosity > 1:
+        print("in verbose 2+ mode")
 
     ipcheck = CheckWAN(args.receiver,
                        args.sender,
