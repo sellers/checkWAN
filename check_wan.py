@@ -120,7 +120,7 @@ class CheckWAN(object):
             #self.newip = str(resp['ip']) or None
             print(self.newip)
         except URLError as uee:
-            _msg = 'Unable to connecto {}:{}'.format(
+            _msg = 'Unable to connect {}:{}'.format(
                 self.vetter, uee)
             if self.loglevel > 1:
                 print(_msg)

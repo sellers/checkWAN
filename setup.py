@@ -11,6 +11,6 @@ setup(name='Distutils',
     author_email='cgseller@gmail.com',
     url='http://www.python.org/sigs/distutils-sig',
     entry_points={
-            'console_scripts': ['checkWAN = checkWAN.checkWAN.py:main', ]
+            'console_scripts': ['checkWAN = checkWAN.check_wan.py:main', ]
             }
 )
