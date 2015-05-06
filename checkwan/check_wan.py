@@ -28,6 +28,7 @@ import logging
 import io
 from syslog import syslog as slog
 from base64 import b64decode
+from email.mime.text import MIMEText
 
 
 __author__ = 'Chris G. Sellers'
@@ -69,7 +70,7 @@ class CheckWAN(object):
     def config(self):
         '''
         config file for passwords and access information
-        default to ./check-wan.cfg
+        default to /etc/check-wan.cfg
         format:
         [ipservice]
         url = http://api.ipify.org?format=json
@@ -81,7 +82,7 @@ class CheckWAN(object):
 
         getconfig = ConfigParser.ConfigParser()
         try:
-            getconfig.readfp(io.open('./check_wan.cfg', 'rt'))
+            getconfig.readfp(io.open('/etc/check_wan.cfg', 'rt'))
         except IOError as error:
             _msg = ('unable to open config : {}'.format(error))
             slog(syslog.LOG_WARNING, _msg)
@@ -118,7 +119,6 @@ class CheckWAN(object):
             resp = json.loads(str(theurl.read().decode('utf-8')))
             self.newip = resp['ip'] or None
             #self.newip = str(resp['ip']) or None
-            print(self.newip)
         except URLError as uee:
             _msg = 'Unable to connect {}:{}'.format(
                 self.vetter, uee)
@@ -146,7 +146,8 @@ class CheckWAN(object):
                 self.existing = None
         except IndexError as ierr:
             self.existing = None
-            _msg = ('Existing IP empty/malformed - assumed None')
+            _msg = ('Existing IP empty/malformed - assumed None : {}'
+                    .format(ierr))
         if self.loglevel > 1:
             print(_msg)
         slog(syslog.LOG_ERR, _msg)
@@ -183,17 +184,19 @@ class CheckWAN(object):
         '''
         send a message to a recipient
         '''
-        smtp_message = ("""From:{}
-                        To:{}
-                        Subject: WAN address changed @home {}
-
+        smtp_message = MIMEText("""
                         {}
 
                         to SSH home, use new IP address
                         to print to home via IPP type printer, use new IP address and port 1631
-                        """.format(self.sender, self.receiver,
-                                   self.newip, message))
+                        """.format(message))
+        smtp_message['Subject'] = ('WAN Address changed @ home {}'
+                                   .format(self.newip))
+        smtp_message['From'] = self.sender
+        smtp_message['To'] = self.receiver
 
+        if self.loglevel > 1:
+            print('  attempting to send email....')
         try:
             smtpobj = smtplib.SMTP('smtp.gmail.com', 587)
             smtpobj.ehlo()
@@ -202,8 +205,10 @@ class CheckWAN(object):
             smtpobj.login(self.sender, self.authpass)
             smtpobj.sendmail(self.sender,
                              self.receiver,
-                             smtp_message)
+                             smtp_message.as_string())
             smtpobj.close()
+            if self.loglevel > 1:
+                print('  sent {} to {}.'.format(smtp_message, self.receiver))
         except smtplib.SMTPConnectError as smtp_err:
             _msg = ('error sending SMTP message : {}'
                     '- contents : {}'.format(smtp_err, smtp_message))
@@ -286,7 +291,7 @@ def main():
     ipcheck.fetchaddress()
     ipcheck.current_ip()
     (notify, message) = ipcheck.compare_ips()
-    if notify and not __debug__:
+    if notify:
         ipcheck.sendmessage(message)
 
 

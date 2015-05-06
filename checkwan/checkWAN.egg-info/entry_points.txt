@@ -1,0 +1,3 @@
+[console_scripts]
+checkWAN = checkwan.check_wan:main
+
