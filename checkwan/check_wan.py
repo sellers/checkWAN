@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-'''
+"""
  Script to check for the Internet Address and log/report it
  Should run through a LaunchAgent/Daemon/Upstart/etc
- written by Chris G. Sellers (cgseller@gmail.com)
+ written by Chris G. Sellers (cgseller[at]gmail.com)
  code written to by python3 and python2 friendly
-'''
+"""
 
 try:
     import ConfigParser
@@ -18,33 +18,34 @@ except ImportError:
     from urllib.request import (urlopen,
                                 Request)
     from urllib.error import URLError
+import io
 import os
-import smtplib
-import argparse
-import json
 import sys
+import json
 import syslog
 import logging
-import io
+import smtplib
+import argparse
+
 from syslog import syslog as slog
 from base64 import b64decode
 from email.mime.text import MIMEText
 
 
 __author__ = 'Chris G. Sellers'
-__verson__ = '0.0.2'
+__verson__ = '0.0.3'
 
 class CheckWAN(object):
-    '''
+    """
     check WAN address and return attributes
-    '''
+    """
 
     def __init__(self, sender=None, receiver=None, level=0):
-        '''
+        """
         create an object to obtain and compare the IP address
         initially written for ipify.org, but maybe needs to be changed
         to handle multiple APIs (ReST) and learn the return format
-        '''
+        """
         self.vetter = 'http://api.ipify.org?format=json'
         self.newip = None
         self.existing = None
@@ -55,20 +56,20 @@ class CheckWAN(object):
         self.loglevel = level
 
     def __repr__(self):
-        '''
+        """
         define representation here
-        '''
-        print('''
+        """
+        print("""
               vetting system: {}
               existing ip : {}
               sender: {}
               receiver: {}
               datafile: {}
-              '''.format(self.vetter, self.existing, self.sender,
+              """.format(self.vetter, self.existing, self.sender,
                          self.receiver, self.datafile))
 
     def config(self):
-        '''
+        """
         config file for passwords and access information
         default to /etc/check-wan.cfg
         format:
@@ -78,7 +79,7 @@ class CheckWAN(object):
         from = cgseller@mac.com
         to = cgseller@mac.com
         password = xxxxxyyyyyzzzz=
-        '''
+        """
 
         getconfig = ConfigParser.ConfigParser()
         try:
@@ -94,9 +95,9 @@ class CheckWAN(object):
 
 
     def reset(self):
-        '''
+        """
         reset any state
-        '''
+        """
         try:
             os.unlink(self.datafile)
         except OSError as oserr:
@@ -111,27 +112,31 @@ class CheckWAN(object):
                 print('unable to reset... {}'.format(self.datafile))
 
     def fetchaddress(self):
-        '''
+        """
         reach out and get the publc IP(4) address
-        '''
+        """
+        count = 0
         try:
-            theurl = urlopen(Request(self.vetter), timeout=30)
-            resp = json.loads(str(theurl.read().decode('utf-8')))
-            self.newip = resp['ip'] or None
-            #self.newip = str(resp['ip']) or None
+            while (self.newip not None) and (count+=1 < 3):
+                theurl = urlopen(Request(self.vetter), timeout=30)
+                resp = json.loads(str(theurl.read().decode('utf-8')))
+                self.newip = resp['ip'] or None
+                sleep 3
         except URLError as uee:
             _msg = 'Unable to connect {}:{}'.format(
                 self.vetter, uee)
             if self.loglevel > 1:
                 print(_msg)
             slog(syslog.LOG_ERR, _msg)
+        except Exception as generr:
+            _msg = 'No response for IP, internet outage?'
 
     def current_ip(self):
-        '''
+        """
         what is the current expected ip
         so we can compare it to the discovered
         if different, notify
-        '''
+        """
         try:
             with io.open('/var/tmp/checkWAN.ip', 'rt') as dataf:
                 self.existing = dataf.readlines(20)[0]
@@ -153,9 +158,9 @@ class CheckWAN(object):
         slog(syslog.LOG_ERR, _msg)
 
     def compare_ips(self):
-        '''
+        """
         compare the IPs to see if the new is different from the existing
-        '''
+        """
         notify = False
         if str(self.newip) != str(self.existing):
             notify = True
@@ -181,16 +186,15 @@ class CheckWAN(object):
         return(notify, _msg)
 
     def sendmessage(self, message):
-        '''
+        """
         send a message to a recipient
-        '''
+        """
         smtp_message = MIMEText("""
                         {}
 
-                        to SSH home, use new IP address
-                        to print to home via IPP type printer, use new IP address and port 1631
+                        to SSH there, use new IP address
                         """.format(message))
-        smtp_message['Subject'] = ('WAN Address changed @ home {}'
+        smtp_message['Subject'] = ('WAN Address changed @ JAZZY Cove {}'
                                    .format(self.newip))
         smtp_message['From'] = self.sender
         smtp_message['To'] = self.receiver
@@ -217,12 +221,12 @@ class CheckWAN(object):
             slog(syslog.LOG_ERR, _msg)
 
 def logdebug(info, level=0):
-    '''
+    """
     logger method to handle debug prints or logging
     3 = print everything
     2 = debug as debug messages
     1 = warning
-    '''
+    """
     if level > 2:
         print(info)
         logging.debug(info)
@@ -230,10 +234,10 @@ def logdebug(info, level=0):
         logging.error(info)
 
 def main():
-    '''
+    """
     make a call out to an external name service to ip provider and return
     what the calling external IP(4) address is
-    '''
+    """
 
     try:
         parser = argparse.ArgumentParser()
@@ -252,10 +256,10 @@ def main():
         parser.add_argument('-n', '--noop', action='store_true',
                             help='do not send email')
         parser.add_argument('-v', '--verbose',
-                            help='''Verbosity: -v - errors;
+                            help="""Verbosity: -v - errors;
                                     -v -v - debugging;
                                     -v -v - everything
-                                 ''',
+                                 """,
                             nargs='*',
                             action='append',
                             default=[])
