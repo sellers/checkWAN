@@ -117,11 +117,12 @@ class CheckWAN(object):
         """
         count = 0
         try:
-            while (self.newip not None) and (count+=1 < 3):
+            while (self.newip is not None) and (count < 3):
                 theurl = urlopen(Request(self.vetter), timeout=30)
                 resp = json.loads(str(theurl.read().decode('utf-8')))
                 self.newip = resp['ip'] or None
-                sleep 3
+                count += 1
+                sleep(count)
         except URLError as uee:
             _msg = 'Unable to connect {}:{}'.format(
                 self.vetter, uee)
