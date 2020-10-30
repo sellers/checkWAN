@@ -26,13 +26,15 @@ import sys
 import syslog
 import logging
 import io
-from syslog import syslog as slog
 from base64 import b64decode
 from email.mime.text import MIMEText
+from syslog import syslog as slog
+from time import sleep
 
 
 __author__ = 'Chris G. Sellers'
-__verson__ = '0.0.2'
+__verson__ = '0.1.0'
+
 
 class CheckWAN(object):
     '''
@@ -118,7 +120,6 @@ class CheckWAN(object):
             theurl = urlopen(Request(self.vetter), timeout=30)
             resp = json.loads(str(theurl.read().decode('utf-8')))
             self.newip = resp['ip'] or None
-            #self.newip = str(resp['ip']) or None
         except URLError as uee:
             _msg = 'Unable to connect {}:{}'.format(
                 self.vetter, uee)
@@ -216,6 +217,7 @@ class CheckWAN(object):
                 print(_msg)
             slog(syslog.LOG_ERR, _msg)
 
+
 def logdebug(info, level=0):
     '''
     logger method to handle debug prints or logging
@@ -228,6 +230,18 @@ def logdebug(info, level=0):
         logging.debug(info)
     else:
         logging.error(info)
+
+
+def performCheck(self, level=0):
+    '''
+    perform actions to check the IP adddress
+    '''
+    self.fetchaddress()
+    self.current_ip()
+    (notify, message) = ipcheck.compare_ips()
+    if notify:
+        self.sendmessage(message)
+
 
 def main():
     '''
@@ -262,6 +276,8 @@ def main():
         parser.add_argument('-c', '--config',
                             help='config file, default = ./check_wan.cfg',
                             default='./check_wan.cfg')
+        parser.add_argument('-d', '--daemon,
+                            help='run in daemon/sleep mode for Docker')
         args = parser.parse_args()
         if len(sys.argv) < 2:
             parser.print_usage()
@@ -288,13 +304,17 @@ def main():
     if sys.version[:3] < '2.6':
         raise RuntimeWarning("Version not 2.7+")
 
-    ipcheck.fetchaddress()
-    ipcheck.current_ip()
-    (notify, message) = ipcheck.compare_ips()
-    if notify:
-        ipcheck.sendmessage(message)
+    if args.daemon:
+        while args.daemon:
+            performCheck(logl   evel)
+            sleep(1000)
+
+    # ipcheck.fetchaddress()
+    # ipcheck.current_ip()
+    # (notify, message) = ipcheck.compare_ips()
+    # if notify:
+        # ipcheck.sendmessage(message)
 
 
 if __name__ == '__main__':
     main()
-
